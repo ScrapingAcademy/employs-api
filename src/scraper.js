@@ -5,7 +5,7 @@ const { timeout } = require('puppeteer')
 const puppeteer = require('puppeteer')
 let browser = null
 
-const searchJobs = async (search) => {
+const searchJobs = async (search, limit) => {
     browser = await puppeteer.launch({
         headless: true,
         userDataDir: '/tmp/myChromeSession'
@@ -25,7 +25,12 @@ const searchJobs = async (search) => {
 
     // await page.click('#btn-search')
 
-    const urls = await page.$$eval('article .col-lg-8 .thumbnail', anchors => anchors.map(anchor => anchor.href))
+    const urls = await page.$$eval('article .col-lg-8 .thumbnail', (anchors, max) => {
+        if (max && max > 0) {
+            return anchors.slice(0, max).map(anchor => anchor.href)
+        }
+        return anchors.map(anchor => anchor.href)
+    }, limit)
 
     const promises = urls.map(url => jobScraper(url))
 
