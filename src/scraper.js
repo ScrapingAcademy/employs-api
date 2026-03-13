@@ -1,135 +1,181 @@
-// https://empregacampinas.com.br/?s=limpeza
-// https://empregacampinas.com.br/page/2/?s=limpeza
-
-const { timeout } = require('puppeteer')
 const puppeteer = require('puppeteer')
-let browser = null
 
-const searchJobs = async (search, limit) => {
-    browser = await puppeteer.launch({
-        headless: true,
-        userDataDir: '/tmp/myChromeSession'
-    })
+const BASE_URL = 'https://empregacampinas.com.br'
+const DEFAULT_TIMEOUT_MS = Number(process.env.SCRAPER_TIMEOUT_MS || 30000)
+const MAX_CONCURRENCY = Number(process.env.MAX_CONCURRENCY || 4)
 
-    const page = await browser.newPage()
+function mapLimit(items, limit, iteratee) {
+  return new Promise((resolve, reject) => {
+    const results = new Array(items.length)
+    let inFlight = 0
+    let cursor = 0
+    let resolved = 0
 
-    await page.goto(`https://empregacampinas.com.br/?s=${search}`, {
-        waitUntil: "domcontentloaded"
-    })
+    const launchNext = () => {
+      if (resolved === items.length) {
+        resolve(results)
+        return
+      }
 
-    // await page.evaluate((search) => {
-    //     const input = document.querySelector('.navbar-form .input-group input')
-    //     input.value = search
+      while (inFlight < limit && cursor < items.length) {
+        const idx = cursor
+        const item = items[cursor]
+        cursor += 1
+        inFlight += 1
 
-    // }, search)
-
-    // await page.click('#btn-search')
-
-    const urls = await page.$$eval('article .col-lg-8 .thumbnail', (anchors, max) => {
-        if (max && max > 0) {
-            return anchors.slice(0, max).map(anchor => anchor.href)
-        }
-        return anchors.map(anchor => anchor.href)
-    }, limit)
-
-    const promises = urls.map(url => jobScraper(url))
-
-    let results = null
-    try {
-        results = await Promise.all(promises)
-        console.log('All data obtained successfully')
-    } catch (error) {
-        console.error('Error getting data: ', error)
+        Promise.resolve(iteratee(item, idx))
+          .then((value) => {
+            results[idx] = value
+          })
+          .catch(reject)
+          .finally(() => {
+            inFlight -= 1
+            resolved += 1
+            launchNext()
+          })
+      }
     }
 
-    await browser.close()
+    if (items.length === 0) {
+      resolve([])
+      return
+    }
 
-    return results
-
-    // for (let link of links) {
-    //     jobScraper(link)
-    // }
-
-    // document.querySelectorAll('article .col-lg-8 .thumbnail')
-
-    
-
+    launchNext()
+  })
 }
 
-// document.querySelector('h1').innerText
-// document.querySelector('.time').innerText
-// document.querySelectorAll('.postie-post p')
+function parseLabelValue(lines, label) {
+  const row = lines.find((line) => line.toLowerCase().startsWith(label.toLowerCase()))
+  if (!row) {
+    return ''
+  }
 
+  const separatorIndex = row.indexOf(':')
+  return separatorIndex >= 0 ? row.slice(separatorIndex + 1).trim() : row
+}
 
-// paragraps.filter((p, index, array) => p.innerText !== '' && !p.innerText.startsWith('ATENÇÃO') && index !== 0 && index !== array.length - 1).map(p => p.innerText)
-
-const jobScraper = async (linkJob) => {
-    const jobPage = await browser.newPage()
-        try {
-            await jobPage.goto(linkJob, { timeout: 0 })
-            await jobPage.exposeFunction('contactScraper', contactScraper)
-            const job = await jobPage.evaluate(async () => {
-                const formatDateTime = (dateTime) => dateTime.substring(0, dateTime.indexOf('(')).trim().replace(/\s+/g, ' ').replace(' / ', '/')
-                const formatLines = (lines) => lines.map(p => p.innerText.replace(/\s+/g, ' ').trim())
-                    .filter((text, index, array) => text !== '' && !text.startsWith('ATENÇÃO') && index !== array.length - 1)
-
-                const formatText = (text) => text.substring(text.indexOf(':') + 1).trim()
-
-                const title = document.querySelector('h1').innerText
-                const dateTime = formatDateTime(document.querySelector('.time').innerText)
-
-                const lines = formatLines(Array.from(document.querySelectorAll('.postie-post p')))
-
-                const description = formatText(lines[0])
-                const responsabilities = formatText(lines[1])
-                const requirements = formatText(lines[2])
-                const salary = formatText(lines[3])
-                const benefits = formatText(lines[4])
-                let observations = ''
-                let contacts = {}
-                if (lines[5].startsWith('Observações')) {
-                    observations = formatText(lines[5])
-                    contacts = await contactScraper(lines[6])
-                } else {
-                    contacts = await contactScraper(lines[5])
-                }
-
-                return { title, dateTime, description, responsabilities, requirements, salary, benefits, observations, contacts }
-            })
-            return job
-        } catch (error) {
-            console.error(error)
-            return null
-        } finally {
-            await jobPage.close()
-        }
+function normalizeDateTime(text) {
+  if (!text) return ''
+  const bracketIndex = text.indexOf('(')
+  const formatted = bracketIndex >= 0 ? text.slice(0, bracketIndex) : text
+  return formatted.trim().replace(/\s+/g, ' ').replace(' / ', '/')
 }
 
 function contactScraper(line) {
-    const contactObj = {}
+  const contactObj = {}
 
-    if (line.includes('e-mail')) {
-        contactObj.type = 'email'
-        contactObj.representative = line.substring((line.indexOf('aos cuidados de') + 'aos cuidados de'.length), line.indexOf('para')).trim()
-        contactObj.email = line.substring(line.indexOf('e-mail') + 'e-mail'.length, line.indexOf('com a sigla')).trim()
-        contactObj.subject = line.substring(line.indexOf('com a sigla') + 'com a sigla'.length, line.indexOf('no campo')).trim()
+  if (line.includes('e-mail')) {
+    contactObj.type = 'email'
+    contactObj.representative = line.substring((line.indexOf('aos cuidados de') + 'aos cuidados de'.length), line.indexOf('para')).trim()
+    contactObj.email = line.substring(line.indexOf('e-mail') + 'e-mail'.length, line.indexOf('com a sigla')).trim()
+    contactObj.subject = line.substring(line.indexOf('com a sigla') + 'com a sigla'.length, line.indexOf('no campo')).trim()
+  } else if (line.includes('site')) {
+    contactObj.type = 'site'
+    contactObj.link = line.substring(line.indexOf('no site') + 'no site'.length, line.indexOf('para o código')).trim()
+  } else if (line.includes('pessoalmente')) {
+    contactObj.type = 'personally'
+    contactObj.address = line.substring(line.indexOf('até o endereço') + 'até o endereço'.length, line.indexOf(', para a vaga')).trim()
+  }
 
-    } else if (line.includes('site')) {
-        contactObj.type = 'site'
-        contactObj.link = line.substring(line.indexOf('no site') + 'no site'.length, line.indexOf('para o código')).trim()
+  contactObj.fullText = line
 
-    } else if (line.includes('pessoalmente')) {
-        contactObj.type = 'personally'
-        contactObj.address = line.substring(line.indexOf('até o endereço') + 'até o endereço'.length, line.indexOf(', para a vaga')).trim()
-    }
+  const deadlineStart = line.indexOf('até o dia')
+  if (deadlineStart >= 0) {
+    contactObj.deadline = line.substring(deadlineStart + 'até o dia'.length, line.lastIndexOf('.')).trim()
+  }
 
-    contactObj.fullText = line
-    contactObj.deadline = line.substring(line.indexOf('até o dia') + 'até o dia'.length, line.lastIndexOf('.')).trim()
+  return contactObj
+}
 
-    return contactObj
+async function scrapeJobPage(browser, linkJob) {
+  const jobPage = await browser.newPage()
+  jobPage.setDefaultTimeout(DEFAULT_TIMEOUT_MS)
 
+  try {
+    await jobPage.goto(linkJob, { waitUntil: 'domcontentloaded' })
+    await jobPage.exposeFunction('contactScraper', contactScraper)
+
+    return await jobPage.evaluate(async () => {
+      const text = (selector) => document.querySelector(selector)?.innerText?.trim() || ''
+
+      const lines = Array.from(document.querySelectorAll('.postie-post p'))
+        .map((p) => p.innerText.replace(/\s+/g, ' ').trim())
+        .filter((line) => line !== '' && !line.startsWith('ATENÇÃO'))
+
+      const contactLine = lines.find((line) => line.includes('Interessados') || line.includes('encaminhar') || line.includes('site')) || ''
+      const observationsLine = lines.find((line) => line.toLowerCase().startsWith('observações')) || ''
+
+      const contacts = contactLine ? await contactScraper(contactLine) : {}
+
+      return {
+        title: text('h1'),
+        dateTime: text('.time'),
+        description: lines.find((line) => line.toLowerCase().startsWith('descrição')) || '',
+        responsibilities: lines.find((line) => line.toLowerCase().startsWith('responsabilidades')) || '',
+        requirements: lines.find((line) => line.toLowerCase().startsWith('requisitos')) || '',
+        salary: lines.find((line) => line.toLowerCase().startsWith('salário')) || '',
+        benefits: lines.find((line) => line.toLowerCase().startsWith('benefícios')) || '',
+        observations: observationsLine,
+        contacts,
+      }
+    })
+  } catch (error) {
+    console.error('[scraper] failed to scrape job page', { linkJob, error: error.message })
+    return null
+  } finally {
+    await jobPage.close()
+  }
+}
+
+function normalizeJob(rawJob) {
+  if (!rawJob) return null
+
+  return {
+    title: rawJob.title,
+    dateTime: normalizeDateTime(rawJob.dateTime),
+    description: parseLabelValue([rawJob.description], 'Descrição'),
+    responsibilities: parseLabelValue([rawJob.responsibilities], 'Responsabilidades'),
+    requirements: parseLabelValue([rawJob.requirements], 'Requisitos'),
+    salary: parseLabelValue([rawJob.salary], 'Salário'),
+    benefits: parseLabelValue([rawJob.benefits], 'Benefícios'),
+    observations: parseLabelValue([rawJob.observations], 'Observações'),
+    contacts: rawJob.contacts || {},
+  }
+}
+
+const searchJobs = async (search, limit) => {
+  const browser = await puppeteer.launch({
+    headless: true,
+    userDataDir: '/tmp/myChromeSession',
+  })
+
+  try {
+    const page = await browser.newPage()
+    page.setDefaultTimeout(DEFAULT_TIMEOUT_MS)
+
+    await page.goto(`${BASE_URL}/?s=${encodeURIComponent(search)}`, {
+      waitUntil: 'domcontentloaded',
+    })
+
+    const urls = await page.$$eval('article .col-lg-8 .thumbnail', (anchors, max) => {
+      const links = anchors.map((anchor) => anchor.href)
+      if (Number.isInteger(max) && max > 0) {
+        return links.slice(0, max)
+      }
+      return links
+    }, limit)
+
+    const jobs = await mapLimit(urls, MAX_CONCURRENCY, (url) => scrapeJobPage(browser, url))
+    return jobs.map(normalizeJob).filter(Boolean)
+  } finally {
+    await browser.close()
+  }
 }
 
 module.exports = {
-    searchJobs
+  contactScraper,
+  normalizeDateTime,
+  parseLabelValue,
+  searchJobs,
 }
