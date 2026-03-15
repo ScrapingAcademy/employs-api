@@ -1,7 +1,6 @@
 // https://empregacampinas.com.br/?s=limpeza
 // https://empregacampinas.com.br/page/2/?s=limpeza
 
-const { timeout } = require('puppeteer')
 const puppeteer = require('puppeteer')
 let browser = null
 
@@ -25,7 +24,7 @@ const searchJobs = async (search, limit) => {
 
     // await page.click('#btn-search')
 
-    const urls = await page.$$eval('article .col-lg-8 .thumbnail', (anchors, max) => {
+    const urls = await page.$$eval('article .col-lg-8 a .thumbnail', (anchors, max) => {
         if (max && max > 0) {
             return anchors.slice(0, max).map(anchor => anchor.href)
         }
@@ -51,9 +50,6 @@ const searchJobs = async (search, limit) => {
     // }
 
     // document.querySelectorAll('article .col-lg-8 .thumbnail')
-
-    
-
 }
 
 // document.querySelector('h1').innerText
@@ -69,9 +65,14 @@ const jobScraper = async (linkJob) => {
             await jobPage.goto(linkJob, { timeout: 0 })
             await jobPage.exposeFunction('contactScraper', contactScraper)
             const job = await jobPage.evaluate(async () => {
-                const formatDateTime = (dateTime) => dateTime.substring(0, dateTime.indexOf('(')).trim().replace(/\s+/g, ' ').replace(' / ', '/')
-                const formatLines = (lines) => lines.map(p => p.innerText.replace(/\s+/g, ' ').trim())
-                    .filter((text, index, array) => text !== '' && !text.startsWith('ATENÇÃO') && index !== array.length - 1)
+                const formatDateTime = (dateTime) => 
+                    dateTime.substring(0, dateTime.indexOf('('))
+                            .trim()
+                            .replace(/\s+/g, ' ')
+                            .replace(' / ', '/')
+                const formatLines = (lines) => 
+                    lines.map(p => p.innerText.replace(/\s+/g, ' ').trim())
+                        .filter((text, index, array) => text !== '' && !text.startsWith('ATENÇÃO') && index !== array.length - 1)
 
                 const formatText = (text) => text.substring(text.indexOf(':') + 1).trim()
 
@@ -81,7 +82,7 @@ const jobScraper = async (linkJob) => {
                 const lines = formatLines(Array.from(document.querySelectorAll('.postie-post p')))
 
                 const description = formatText(lines[0])
-                const responsabilities = formatText(lines[1])
+                const responsibilities = formatText(lines[1])
                 const requirements = formatText(lines[2])
                 const salary = formatText(lines[3])
                 const benefits = formatText(lines[4])
@@ -94,7 +95,7 @@ const jobScraper = async (linkJob) => {
                     contacts = await contactScraper(lines[5])
                 }
 
-                return { title, dateTime, description, responsabilities, requirements, salary, benefits, observations, contacts }
+                return { title, dateTime, description, responsibilities, requirements, salary, benefits, observations, contacts }
             })
             return job
         } catch (error) {
