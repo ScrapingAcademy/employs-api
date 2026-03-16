@@ -11,6 +11,7 @@ exports.getJobs = async (search, limit, cursor) => {
 
     return {
         data: jobs,
+        count: jobs.length,
         pagination: {
             nextCursor
         }
@@ -30,5 +31,8 @@ exports.streamJobs = async (
 
     await scraper.scrapeJobsStream(items, sendEvent)
 
-    return nextCursor
+    return {
+        nextCursor,
+        count: items.length
+    }
 }

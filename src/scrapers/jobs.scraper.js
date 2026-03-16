@@ -87,10 +87,10 @@ function parseJob(rawJob) {
     const observations =
         lines.find(l => l.startsWith("Observações"))?.split(":")[1]?.trim() || ""
 
-    const contactLine =
+    const contacts =
         lines.find(l => l.includes("encaminhar o currículo")) || ""
     
-    const contacts = parseContact(contactLine)
+    const parsedContacts = parseContact(contacts)
 
     return {
         title: rawJob.title,
@@ -101,30 +101,32 @@ function parseJob(rawJob) {
         salary,
         benefits,
         observations,
-        contacts
+        contacts: parsedContacts
     }
 }
 
-function parseContact(line) {
-    const contactObj = {}
+function parseContact(rawContact) {
+    const contact = {}
 
-    if (line.includes('e-mail')) {
-        contactObj.type = 'email'
-        contactObj.representative = line.substring((line.indexOf('aos cuidados de') + 'aos cuidados de'.length), line.indexOf('para')).trim()
-        contactObj.email = line.substring(line.indexOf('e-mail') + 'e-mail'.length, line.indexOf('com a sigla')).trim()
-        contactObj.subject = line.substring(line.indexOf('com a sigla') + 'com a sigla'.length, line.indexOf('no campo')).trim()
-
-    } else if (line.includes('site')) {
-        contactObj.type = 'site'
-        contactObj.link = line.substring(line.indexOf('no site') + 'no site'.length, line.indexOf('para o código')).trim()
-
-    } else if (line.includes('pessoalmente')) {
-        contactObj.type = 'personally'
-        contactObj.address = line.substring(line.indexOf('até o endereço') + 'até o endereço'.length, line.indexOf(', para a vaga')).trim()
+    switch (true) {
+        case rawContact.includes('e-mail'):
+            contact.type = 'email'
+            contact.representative = rawContact.substring((rawContact.indexOf('aos cuidados de') + 'aos cuidados de'.length), rawContact.indexOf('para')).trim()
+            contact.email = rawContact.substring(rawContact.indexOf('e-mail') + 'e-mail'.length, rawContact.indexOf('com a sigla')).trim()
+            contact.subject = rawContact.substring(rawContact.indexOf('com a sigla') + 'com a sigla'.length, rawContact.indexOf('no campo')).trim()
+            break
+        case rawContact.includes('site'):
+            contact.type = 'site'
+            contact.link = rawContact.substring(rawContact.indexOf('no site') + 'no site'.length, rawContact.indexOf('para o código')).trim()
+            break
+        case rawContact.includes('pessoalmente'):
+            contact.type = 'personally'
+            contact.address = rawContact.substring(rawContact.indexOf('até o endereço') + 'até o endereço'.length, rawContact.indexOf(', para a vaga')).trim()
+            break
     }
 
-    contactObj.deadline = line.substring(line.indexOf('até o dia') + 'até o dia'.length, line.lastIndexOf('.')).trim()
-    return contactObj
+    contact.deadline = rawContact.substring(rawContact.indexOf('até o dia') + 'até o dia'.length, rawContact.lastIndexOf('.')).trim()
+    return contact
 }
 
 export async function scrapeJobs(urls) {

@@ -35,16 +35,17 @@ exports.streamJobs = async (req, res) => {
         })
     }
 
-    res.setHeader("Content-Type", "text/event-stream")
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8")
     res.setHeader("Cache-Control", "no-cache")
     res.setHeader("Connection", "keep-alive")
 
     const sendEvent = (data) => {
+        res.write(`event: job\n`)
         res.write(`data: ${JSON.stringify(data)}\n\n`)
     }
 
     try {
-        const nextCursor = await jobsService.streamJobs(
+        const data = await jobsService.streamJobs(
             search,
             limit,
             cursor,
@@ -52,7 +53,7 @@ exports.streamJobs = async (req, res) => {
         )
 
         res.write(`event: cursor\n`)
-        res.write(`data: ${nextCursor}\n\n`)
+        res.write(`data: ${JSON.stringify(data)}\n\n`)
 
         res.end()
     } catch (error) {
