@@ -9,6 +9,7 @@ const limitConcurrency = pLimit(3)
 export async function getJobUrls(search) {
     const browser = await getBrowser()
     const page = await browser.newPage()
+    await setPageRequestInterceptor(page)
 
     logger.info({ search }, "Scraping job URLs")
 
@@ -29,12 +30,28 @@ export async function getJobUrls(search) {
     return urls
 }
 
+async function setPageRequestInterceptor(page) {
+    await page.setRequestInterception(true)
+
+    page.on("request", (req) => {
+        const type = req.resourceType()
+
+        if (["image", "stylesheet", "font", "media"].includes(type)) {
+            req.abort()
+        } else {
+            req.continue()
+        }
+
+    })
+}
+
 async function scrapeJob(url) {
     const start = Date.now()
     logger.debug({ url }, "scraping job page")
 
     const browser = await getBrowser()
     const page = await browser.newPage()
+    await setPageRequestInterceptor(page)
 
     try {
         await page.goto(url, {
@@ -67,7 +84,7 @@ async function scrapeJob(url) {
         })
 
         logger.debug({ duration: Date.now() - start },
-         "job page scraped successfully")
+            "job page scraped successfully")
 
         const parsedJob = parseJob(rawJob)
 
@@ -105,7 +122,7 @@ function parseJob(rawJob) {
 
     const contacts =
         lines.find(l => l.includes("encaminhar o currículo")) || ""
-    
+
     const parsedContacts = parseContact(contacts)
 
     return {
@@ -146,12 +163,12 @@ function parseContact(rawContact) {
 }
 
 function checkHasUndefined(obj) {
-  return Object.values(obj).some(value => {
-    if (value && typeof value === 'object') {
-      return checkHasUndefined(value); // Verifica dentro de 'contacts'
-    }
-    return !value;
-  });
+    return Object.values(obj).some(value => {
+        if (value && typeof value === 'object') {
+            return checkHasUndefined(value); // Verifica dentro de 'contacts'
+        }
+        return !value;
+    });
 }
 
 export async function scrapeJobs(urls) {
@@ -166,7 +183,7 @@ export async function scrapeJobs(urls) {
     return jobs
 }
 
-export async function scrapeJobsStream (urls, sendEvent) {
+export async function scrapeJobsStream(urls, sendEvent) {
     logger.info({ totalUrls: urls.length }, "starting job scraping stream")
     const tasks = urls.map(url =>
         limitConcurrency(async () => {
