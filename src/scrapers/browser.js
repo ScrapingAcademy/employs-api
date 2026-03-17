@@ -1,10 +1,9 @@
-const puppeteer = require("puppeteer")
+import puppeteer from 'puppeteer'
 
 let browser = null
 
 // singleton
-exports.getBrowser = async () => {
-
+export default async function getBrowser() {
   if (!browser) {
 
     browser = await puppeteer.launch({

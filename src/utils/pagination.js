@@ -1,4 +1,4 @@
-exports.slicePagination = (urls, limit, cursor) => {
+export default function slicePagination(urls, limit, cursor) {
   const start = cursor
   const end = start + limit
 

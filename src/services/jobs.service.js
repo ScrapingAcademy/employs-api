@@ -1,7 +1,8 @@
-const scraper = require('../scrapers/jobs.scraper')
-const { slicePagination } = require("../utils/pagination")
+import * as scraper from '../scrapers/jobs.scraper.js'
+import slicePagination from '../utils/pagination.js'
+import logger from '../logger.js'
 
-exports.getJobs = async (search, limit, cursor) => {
+export async function getJobs(search, limit, cursor) {
     const urls = await scraper.getJobUrls(search)
 
     const { items, nextCursor } =
@@ -9,8 +10,15 @@ exports.getJobs = async (search, limit, cursor) => {
 
     const jobs = await scraper.scrapeJobs(items)
 
+    logger.info({
+        totalUrls: urls.length,
+        limitedTo: items.length,
+        success: jobs.length,
+        failed: items.length - jobs.length
+    }, "scraping stats")
+
     return {
-        data: jobs,
+        jobs,
         count: jobs.length,
         pagination: {
             nextCursor
@@ -18,12 +26,7 @@ exports.getJobs = async (search, limit, cursor) => {
     }
 }
 
-exports.streamJobs = async (
-    search,
-    limit,
-    cursor,
-    sendEvent
-) => {
+export async function streamJobs(search, limit, cursor, sendEvent) {
     const urls = await scraper.getJobUrls(search)
 
     const { items, nextCursor } =

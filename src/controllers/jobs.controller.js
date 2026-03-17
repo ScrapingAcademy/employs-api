@@ -1,6 +1,7 @@
-const jobsService = require('../services/jobs.service')
+import logger from '../logger.js'
+import * as jobsService from '../services/jobs.service.js'
 
-exports.getJobs = async (req, res) => {
+export async function getJobs(req, res) {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
     const limit = Number(req.query.limit) || 5
     const cursor = Number(req.query.cursor) || 0
@@ -24,7 +25,7 @@ exports.getJobs = async (req, res) => {
 
 }
 
-exports.streamJobs = async (req, res) => {
+export async function streamJobs(req, res) {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
     const limit = Number(req.query.limit) || 5
     const cursor = Number(req.query.cursor) || 0
@@ -51,6 +52,8 @@ exports.streamJobs = async (req, res) => {
             cursor,
             sendEvent
         )
+
+        logger.info({ data }, "page finished streaming")
 
         res.write(`event: cursor\n`)
         res.write(`data: ${JSON.stringify(data)}\n\n`)

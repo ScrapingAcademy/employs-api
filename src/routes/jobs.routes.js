@@ -1,9 +1,9 @@
-const express = require('express')
-const controller = require('../controllers/jobs.controller')
+import express from 'express'
+import * as controller from '../controllers/jobs.controller.js'
 
 const router = express.Router()
 
 router.get('/', controller.getJobs)
 router.get('/stream', controller.streamJobs)
 
-module.exports = router
+export default router

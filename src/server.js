@@ -1,11 +1,15 @@
-const express = require('express')
-const jobsRoutes = require("./routes/jobs.routes")
+import express from 'express'
+import pinoHttp from 'pino-http'
+import logger from './logger.js'
+import jobsRoutes from './routes/jobs.routes.js'
+import pkg from '../package.json' with { type: 'json' }
+import 'dotenv/config';
 
-const pkg = require('../package.json')
 const port = process.env.PORT || 3000
-
 const app = express()
+
 app.use(express.json())
+app.use(pinoHttp({ logger }))
 app.use('/jobs', jobsRoutes)
 
 app.get('/', (req, res) => {
@@ -19,5 +23,5 @@ app.get('/', (req, res) => {
 })
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`)
+    logger.info(`Server running on port ${port}`)
 })

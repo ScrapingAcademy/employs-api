@@ -1,12 +1,16 @@
 import pLimit from 'p-limit'
-import { getBrowser } from './browser.js'
-const DEFAULT_TIMEOUT_MS = Number(process.env.SCRAPER_TIMEOUT_MS || 30000)
+import getBrowser from './browser.js'
+import logger from '../logger.js'
+import 'dotenv/config';
 
+const DEFAULT_TIMEOUT_MS = Number(process.env.SCRAPER_TIMEOUT_MS || 30000)
 const limitConcurrency = pLimit(3)
 
 export async function getJobUrls(search) {
     const browser = await getBrowser()
     const page = await browser.newPage()
+
+    logger.info({ search }, "Scraping job URLs")
 
     await page.goto(
         `https://www.empregacampinas.com.br/?s=${encodeURIComponent(search)}`,
@@ -26,6 +30,9 @@ export async function getJobUrls(search) {
 }
 
 async function scrapeJob(url) {
+    const start = Date.now()
+    logger.debug({ url }, "scraping job page")
+
     const browser = await getBrowser()
     const page = await browser.newPage()
 
@@ -59,7 +66,16 @@ async function scrapeJob(url) {
             }
         })
 
-        return parseJob(rawJob)
+        logger.debug({ duration: Date.now() - start },
+         "job page scraped successfully")
+
+        const parsedJob = parseJob(rawJob)
+
+        if (checkHasUndefined(parsedJob)) {
+            logger.warn({ url, job: parsedJob }, "possible layout change detected")
+        }
+
+        return parsedJob
     } finally {
         await page.close()
     }
@@ -129,20 +145,33 @@ function parseContact(rawContact) {
     return contact
 }
 
+function checkHasUndefined(obj) {
+  return Object.values(obj).some(value => {
+    if (value && typeof value === 'object') {
+      return checkHasUndefined(value); // Verifica dentro de 'contacts'
+    }
+    return !value;
+  });
+}
+
 export async function scrapeJobs(urls) {
+    logger.info({ totalUrls: urls.length }, "starting job scraping")
     const jobs = await Promise.all(
         urls.map(url =>
             limitConcurrency(() => scrapeJob(url))
         )
     )
 
+    logger.info({ totalJobs: jobs.length }, "scraping finished")
     return jobs
 }
 
 export async function scrapeJobsStream (urls, sendEvent) {
+    logger.info({ totalUrls: urls.length }, "starting job scraping stream")
     const tasks = urls.map(url =>
         limitConcurrency(async () => {
             const job = await scrapeJob(url)
+            logger.info("job scraped, sending to client")
             sendEvent(job)
         })
     )
