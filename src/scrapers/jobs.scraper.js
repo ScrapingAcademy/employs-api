@@ -4,17 +4,74 @@ import logger from '../logger.js'
 import 'dotenv/config';
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.SCRAPER_TIMEOUT_MS || 30000)
-const limitConcurrency = pLimit(3)
+// const limitConcurrency = pLimit(3)
 
-export async function getJobUrls(search) {
+export async function getJobs({ search, nextPageToken, limit = 5, streamSendEvent }) {
+
+    let state = nextPageToken
+        ? decodeToken(nextPageToken)
+        : { search, page: 1, index: 0 }
+
+    let urls = await getJobUrls(search, state.page)
+    let totalUrls = urls.length
+
+    const jobs = []
+    let hasMore = true
+
+    logger.info({ totalPageUrls: urls.length }, "starting job scraping")
+    while (jobs.length < limit) {
+
+        // page finished → next page
+        if (state.index >= urls.length) {
+            state.page++
+            state.index = 0
+            urls = await getJobUrls(search, state.page)
+            totalUrls += urls.length
+            logger.info({ totalPageUrls: urls.length, pageNumber: state.page }, "starting job scraping on next page")
+
+            if (!urls.length) {
+                hasMore = false
+                break
+            }
+
+        }
+        
+        const url = urls[state.index]
+        const job = await scrapeJob(url)
+
+        if (streamSendEvent) {
+            logger.info("job scraped, sending to stream client")
+            streamSendEvent(job)
+        }
+
+        jobs.push(job)
+        state.index++
+    }
+
+    const _nextPageToken = hasMore ? encodeToken(state) : null
+
+    logger.info({
+        totalUrls,
+        limitedTo: limit,
+        success: jobs.length,
+        failed: totalUrls - jobs.length
+    }, "scraping stats")
+
+    return {
+        jobs,
+        nextPageToken: _nextPageToken
+    }
+}
+
+async function getJobUrls(search, pageNumber = 1) {
     const browser = await getBrowser()
     const page = await browser.newPage()
     await setPageRequestInterceptor(page)
 
-    logger.info({ search }, "Scraping job URLs")
+    logger.info({ search, pageNumber }, "Scraping job URLs")
 
     await page.goto(
-        `https://www.empregacampinas.com.br/?s=${encodeURIComponent(search)}`,
+        `https://www.empregacampinas.com.br/page/${pageNumber}/?s=${encodeURIComponent(search)}`,
         {
             timeout: DEFAULT_TIMEOUT_MS,
             waitUntil: "domcontentloaded"
@@ -28,6 +85,14 @@ export async function getJobUrls(search) {
 
     await page.close()
     return urls
+}
+
+function encodeToken(payload) {
+    return Buffer.from(JSON.stringify(payload)).toString("base64")
+}
+
+function decodeToken(token) {
+    return JSON.parse(Buffer.from(token, "base64").toString())
 }
 
 async function setPageRequestInterceptor(page) {
@@ -106,22 +171,22 @@ function parseJob(rawJob) {
     const description = lines[0] || ""
 
     const responsibilities =
-        lines.find(l => l.startsWith("Responsabilidades"))?.split(":")[1]?.trim() || ""
+        lines.find(l => l.startsWith("Responsabilidades"))?.split("Responsabilidades:")[1]?.trim() || ""
 
     const requirements =
-        lines.find(l => l.startsWith("Requisitos"))?.split(":")[1]?.trim() || ""
+        lines.find(l => l.startsWith("Requisitos"))?.split("Requisitos:")[1]?.trim() || ""
 
     const salary =
-        lines.find(l => l.startsWith("Salário"))?.split(":")[1]?.trim() || ""
+        lines.find(l => l.startsWith("Salário"))?.split("Salário:")[1]?.trim() || ""
 
     const benefits =
-        lines.find(l => l.startsWith("Benefícios"))?.split(":")[1]?.trim() || ""
+        lines.find(l => l.startsWith("Benefícios"))?.split("Benefícios:")[1]?.trim() || ""
 
     const observations =
-        lines.find(l => l.startsWith("Observações"))?.split(":")[1]?.trim() || ""
+        lines.find(l => l.startsWith("Observações"))?.split("Observações:")[1]?.trim() || ""
 
     const contacts =
-        lines.find(l => l.includes("encaminhar o currículo")) || ""
+        lines.find(l => l.includes("Os interessados deverão")) || ""
 
     const parsedContacts = parseContact(contacts)
 
@@ -171,27 +236,27 @@ function checkHasUndefined(obj) {
     });
 }
 
-export async function scrapeJobs(urls) {
-    logger.info({ totalUrls: urls.length }, "starting job scraping")
-    const jobs = await Promise.all(
-        urls.map(url =>
-            limitConcurrency(() => scrapeJob(url))
-        )
-    )
+// export async function scrapeJobs(urls) {
+//     logger.info({ totalUrls: urls.length }, "starting job scraping")
+//     const jobs = await Promise.all(
+//         urls.map(url =>
+//             limitConcurrency(() => scrapeJob(url))
+//         )
+//     )
 
-    logger.info({ totalJobs: jobs.length }, "scraping finished")
-    return jobs
-}
+//     logger.info({ totalJobs: jobs.length }, "scraping finished")
+//     return jobs
+// }
 
-export async function scrapeJobsStream(urls, sendEvent) {
-    logger.info({ totalUrls: urls.length }, "starting job scraping stream")
-    const tasks = urls.map(url =>
-        limitConcurrency(async () => {
-            const job = await scrapeJob(url)
-            logger.info("job scraped, sending to client")
-            sendEvent(job)
-        })
-    )
+// export async function scrapeJobsStream(urls, sendEvent) {
+//     logger.info({ totalUrls: urls.length }, "starting job scraping stream")
+//     const tasks = urls.map(url =>
+//         limitConcurrency(async () => {
+//             const job = await scrapeJob(url)
+//             logger.info("job scraped, sending to client")
+//             sendEvent(job)
+//         })
+//     )
 
-    await Promise.all(tasks)
-}
+//     await Promise.all(tasks)
+// }

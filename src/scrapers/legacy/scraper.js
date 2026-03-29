@@ -1,3 +1,8 @@
+/**
+ * This file contains a legacy scraper implementation
+ *
+ */
+
 // https://empregacampinas.com.br/?s=limpeza
 // https://empregacampinas.com.br/page/2/?s=limpeza
 
