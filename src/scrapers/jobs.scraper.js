@@ -35,16 +35,19 @@ export async function getJobs({ search, nextPageToken, limit = 5, streamSendEven
             }
 
         }
-        
+
         const url = urls[state.index]
         const job = await scrapeJob(url)
 
-        if (streamSendEvent) {
-            logger.info("job scraped, sending to stream client")
-            streamSendEvent(job)
+        if (job) {
+            if (streamSendEvent) {
+                logger.info("job scraped, sending to stream client")
+                streamSendEvent(job)
+            }
+
+            jobs.push(job)
         }
 
-        jobs.push(job)
         state.index++
     }
 
@@ -83,6 +86,7 @@ async function getJobUrls(search, pageNumber = 1) {
         anchors => [...new Set(anchors.map(a => a.href))]   // remove duplicates
     )
 
+    logger.debug('Closing job page')
     await page.close()
     return urls
 }
@@ -110,7 +114,7 @@ async function setPageRequestInterceptor(page) {
     })
 }
 
-async function scrapeJob(url) {
+export async function scrapeJob(url) {
     const start = Date.now()
     logger.debug({ url }, "scraping job page")
 
@@ -151,14 +155,24 @@ async function scrapeJob(url) {
         logger.debug({ duration: Date.now() - start },
             "job page scraped successfully")
 
-        const parsedJob = parseJob(rawJob)
+        if (rawJob.jobDetails.length) {
+            const job = parseJob(rawJob)
+            
+            if (checkHasUndefined(job)) {
+                logger.warn({ url, job: job }, "possible layout change detected")
+            }
 
-        if (checkHasUndefined(parsedJob)) {
-            logger.warn({ url, job: parsedJob }, "possible layout change detected")
+            return job
+        } else {
+            logger.warn({ url }, "no job details found on page")
+            return null
         }
 
-        return parsedJob
+    } catch (error) {
+        logger.error({ url, error }, "failed to scrape job page")
+        return null
     } finally {
+        logger.debug('Closing job page')
         await page.close()
     }
 }

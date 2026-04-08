@@ -1,6 +1,36 @@
 import logger from '../logger.js'
 import * as jobsService from '../services/jobs.service.js'
 
+export async function scrapeJob(req, res) {
+    const url = typeof req.query.jobUrl === 'string' ? req.query.jobUrl.trim() : ''
+
+    const isValidUrl = (url) => {
+        try {
+            new URL(url)
+            return true
+        } catch (error) {
+            return false
+        }
+    }
+
+    if (!url || !isValidUrl(url)) {
+        return res.status(400).json({
+            error: "valid url query parameter required"
+        })
+    }
+
+    try {
+        const job = await jobsService.scrapeJob(url)
+        logger.info({ url }, "job scraped successfully")
+        res.json(job)
+    } catch (error) {
+        logger.error(error)
+        res.status(500).json({
+            error: "failed to scrape job"
+        })
+    }
+}
+
 export async function getJobs(req, res) {
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : ''
     const limit = Number(req.query.limit) || 5
@@ -8,7 +38,7 @@ export async function getJobs(req, res) {
 
     if (!search) {
         return res.status(400).json({
-            error: "search query required"
+            error: "search query parameter required"
         })
     }
 
@@ -25,7 +55,7 @@ export async function getJobs(req, res) {
         logger.error(error)
 
         res.status(500).json({
-            error: "failed to fetch jobs"
+            error: "failed to scrape jobs"
         })
     }
 
@@ -38,7 +68,7 @@ export async function streamJobs(req, res) {
 
     if (!search) {
         return res.status(400).json({
-            error: "search query required"
+            error: "search query parameter required"
         })
     }
 

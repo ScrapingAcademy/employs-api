@@ -5,5 +5,6 @@ const router = express.Router()
 
 router.get('/', controller.getJobs)
 router.get('/stream', controller.streamJobs)
+router.get('/scrape', controller.scrapeJob)
 
 export default router

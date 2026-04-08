@@ -107,6 +107,7 @@ const jobScraper = async (linkJob) => {
             console.error(error)
             return null
         } finally {
+            logger.debug('Closing job page')
             await jobPage.close()
         }
 }
