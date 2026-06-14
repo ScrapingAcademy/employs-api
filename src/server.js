@@ -11,7 +11,7 @@ const app = express()
 
 app.use(express.json())
 app.use(cors({
-  origin: process.env.CLIENT_URL
+    origin: process.env.CLIENT_URL
 }));
 app.use(pinoHttp({ logger }))
 app.use('/jobs', jobsRoutes)
